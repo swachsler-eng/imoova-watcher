@@ -28,24 +28,28 @@ Add two secrets:
 - `GMAIL_ADDRESS` → the Gmail address from step 1
 - `GMAIL_APP_PASSWORD` → the 16-character app password from step 1
 
-### 4. Edit your watch list
-Open `watcher.py` and fill in the `WATCH_CITIES` list and `TO_EMAIL` near the top, e.g.:
+### 4. Edit your filters
+Open `watcher.py` and fill in `DELIVER_AFTER_DATE`, `MIN_DAYS`, and
+`TO_EMAIL` near the top, e.g.:
 
 ```python
-WATCH_CITIES = [
-    "Denver",
-    "Salt Lake City",
-    "Chicago",
-]
+DELIVER_AFTER_DATE = date(2026, 8, 2)   # only alert if Deliver date is after this
+MIN_DAYS = 6                             # only alert if rental is at least this many days
 
 TO_EMAIL = "yourname@gmail.com"
 ```
 
+A listing only triggers an alert if **both** conditions are true — Deliver
+date after `DELIVER_AFTER_DATE`, and at least `MIN_DAYS` rental days (using
+just the first number when the site shows something like "6 + 1"). Fuel
+refund status is shown in the email for every match, but doesn't filter
+anything.
+
 Commit/save the change. That's it — the workflow in
-`.github/workflows/watch.yml` will now run automatically 3x/day and email
-you when a new matching listing appears. It only emails about *new*
-listings it hasn't seen before, so you won't get repeat alerts for the
-same one.
+`.github/workflows/watch.yml` will now run automatically on your schedule
+and email you when a new matching listing appears. It only emails about
+*new* listings it hasn't seen before, so you won't get repeat alerts for
+the same one.
 
 ## Testing it right now (don't want to wait for the schedule)
 In your repo, go to the **Actions** tab → click "Imoova Watcher" on the left →
@@ -63,6 +67,4 @@ UTC. Each `cron:` line is one run time per day.
 - GitHub Actions' free tier is generous (2,000 minutes/month for private
   repos) — this script takes seconds per run, so 3x/day is nowhere close to
   the limit.
-- Matching is a simple "city name appears in From or To column" check — so
-  "Salt Lake City" won't accidentally match "Lake Havasu" etc., but do
-  double check the exact city names Imoova uses match what you type.
+
