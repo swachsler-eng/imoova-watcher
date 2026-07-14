@@ -1,0 +1,40 @@
+name: Imoova Watcher
+
+on:
+  schedule:
+    - cron: "0 11 * * *"
+    - cron: "0 17 * * *"
+    - cron: "0 0 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  check-listings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run watcher
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python watcher.py
+
+      - name: Save "seen" list so we don't repeat alerts
+        run: |
+          git config user.name "imoova-watcher-bot"
+          git config user.email "actions@github.com"
+          git add seen_listings.json
+          git diff --quiet --cached || git commit -m "Update seen listings"
+          git push
