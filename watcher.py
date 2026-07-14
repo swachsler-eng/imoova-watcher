@@ -1,14 +1,18 @@
 """
 Imoova relocation watcher.
 
-Scrapes https://www.imoova.com/relocations/table/usa , filters listings
-by the cities you care about (matching either the "From" or "To" column),
-and emails you when a NEW matching listing shows up (it won't re-email
-you about the same listing twice).
+Scrapes https://www.imoova.com/relocations/table/usa , filters listings by:
+  - "Deliver" date must be AFTER a date you set (DELIVER_AFTER_DATE)
+  - "Days" must be AT LEAST a number you set (MIN_DAYS) - using only the
+    first number when the site shows something like "6 + 1"
+
+Emails you when a NEW matching listing shows up (won't re-email about the
+same listing twice). The email includes From, To, Depart, Deliver, Vehicle,
+Days, and Fuel for every match, purely as info (those don't filter anything).
 
 HOW TO USE
 ----------
-1. Edit the CONFIG section below (your cities, and your email address).
+1. Edit the CONFIG section below (cutoff date, min days, your email address).
 2. Set two GitHub repo secrets (see README.md) so the script can send email:
      GMAIL_ADDRESS   - the gmail account sending the alert
      GMAIL_APP_PASSWORD - a 16-character Gmail "app password" (not your real password)
@@ -20,6 +24,7 @@ import os
 import re
 import smtplib
 import sys
+from datetime import date, datetime
 from email.mime.text import MIMEText
 from pathlib import Path
 
@@ -28,16 +33,17 @@ from bs4 import BeautifulSoup
 
 # ======================= CONFIG - EDIT THIS PART =======================
 
-# Cities you want to be alerted about. Matching is case-insensitive and
-# matches if the city name appears in either the "From" or "To" column.
-# Example: ["Denver", "Salt Lake City", "Chicago"]
-WATCH_CITIES = [
-    # "Denver",
-    # "Chicago",
-]
+# Only alert on listings whose "Deliver" date is AFTER this date.
+# Format is date(YEAR, MONTH, DAY) - e.g. date(2026, 8, 2) means "after Aug 2, 2026"
+DELIVER_AFTER_DATE = date(2026, 8, 2)
+
+# Only alert on listings with AT LEAST this many rental days.
+# The site sometimes shows days as "6 + 1" (6 days at $1/night, +1 optional
+# extra day at extra cost) - we only count the first number (6 in that example).
+MIN_DAYS = 6
 
 # Where to send the alert email
-TO_EMAIL = "you@example.com"
+TO_EMAIL = "swachsler@outlook.com"
 
 # The page we're watching
 URL = "https://www.imoova.com/relocations/table/usa"
@@ -47,6 +53,23 @@ URL = "https://www.imoova.com/relocations/table/usa"
 SEEN_FILE = Path(__file__).parent / "seen_listings.json"
 
 # =========================================================================
+
+
+def parse_deliver_date(text):
+    """Turns '1st Aug 2026' / '30th Jun 2026' into a date object. Returns None if it can't parse."""
+    cleaned = re.sub(r"(\d+)(st|nd|rd|th)", r"\1", text).strip()
+    try:
+        return datetime.strptime(cleaned, "%d %b %Y").date()
+    except ValueError:
+        return None
+
+
+def parse_days(text):
+    """Turns '6 + 1' or '6' into 6 (the first number only). Returns None if it can't parse."""
+    match = re.search(r"\d+", text)
+    if not match:
+        return None
+    return int(match.group())
 
 
 def fetch_listings():
@@ -78,6 +101,8 @@ def fetch_listings():
     idx_depart = col("depart")
     idx_deliver = col("deliver")
     idx_vehicle = col("vehicle")
+    idx_days = col("days")
+    idx_fuel = col("fuel")
 
     body = table.find("tbody") or table
     rows = body.find_all("tr")
@@ -104,6 +129,8 @@ def fetch_listings():
         depart = cell_text(idx_depart)
         deliver = cell_text(idx_deliver)
         vehicle = cell_text(idx_vehicle)
+        days = cell_text(idx_days)
+        fuel = cell_text(idx_fuel)
 
         if not ref or not from_city:
             continue
@@ -116,6 +143,8 @@ def fetch_listings():
                 "depart": depart,
                 "deliver": deliver,
                 "vehicle": vehicle,
+                "days": days,
+                "fuel": fuel,
                 "link": link,
             }
         )
@@ -123,16 +152,16 @@ def fetch_listings():
     return listings
 
 
-def matches_watch_list(listing):
-    if not WATCH_CITIES:
+def matches_criteria(listing):
+    deliver_date = parse_deliver_date(listing["deliver"])
+    if deliver_date is None or deliver_date <= DELIVER_AFTER_DATE:
         return False
-    from_l = listing["from"].lower()
-    to_l = listing["to"].lower()
-    for city in WATCH_CITIES:
-        c = city.lower().strip()
-        if c and (c in from_l or c in to_l):
-            return True
-    return False
+
+    days = parse_days(listing["days"])
+    if days is None or days < MIN_DAYS:
+        return False
+
+    return True
 
 
 def load_seen():
@@ -158,11 +187,12 @@ def send_email(new_matches):
     lines = []
     for m in new_matches:
         lines.append(
-            f"{m['from']} -> {m['to']}  |  Depart: {m['depart']}  Deliver by: {m['deliver']}\n"
-            f"Vehicle: {m['vehicle']}\n"
+            f"{m['from']} -> {m['to']}\n"
+            f"Depart: {m['depart']}   Deliver: {m['deliver']}\n"
+            f"Vehicle: {m['vehicle']}   Days: {m['days']}   Fuel refunded: {m['fuel']}\n"
             f"{m['link']}\n"
         )
-    body = "New Imoova relocation listings matching your cities:\n\n" + "\n".join(lines)
+    body = "New Imoova relocation listings matching your criteria:\n\n" + "\n".join(lines)
 
     msg = MIMEText(body)
     msg["Subject"] = f"Imoova: {len(new_matches)} new matching listing(s)"
@@ -177,15 +207,11 @@ def send_email(new_matches):
 
 
 def main():
-    if not WATCH_CITIES:
-        print("WATCH_CITIES is empty in watcher.py — nothing to match against. Edit the CONFIG section.")
-        sys.exit(0)
-
     listings = fetch_listings()
     print(f"Fetched {len(listings)} listings from site.")
 
     seen = load_seen()
-    matches = [l for l in listings if matches_watch_list(l)]
+    matches = [l for l in listings if matches_criteria(l)]
     new_matches = [m for m in matches if m["ref"] not in seen]
 
     print(f"{len(matches)} total matches, {len(new_matches)} are new.")
