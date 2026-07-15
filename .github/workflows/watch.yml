@@ -6,6 +6,7 @@ on:
     - cron: "0 16 * * *"
     - cron: "0 21 * * *"
     - cron: "0 1 * * *"
+    - cron: "23 3 * * *"
     
   workflow_dispatch: {}
 
