@@ -35,7 +35,7 @@ from bs4 import BeautifulSoup
 
 # Only alert on listings whose "Deliver" date is AFTER this date.
 # Format is date(YEAR, MONTH, DAY) - e.g. date(2026, 8, 2) means "after Aug 2, 2026"
-DELIVER_AFTER_DATE = date(2026, 8, 2)
+DELIVER_AFTER_DATE = date(2026, 11, 2)
 
 # Only alert on listings with AT LEAST this many rental days.
 # The site sometimes shows days as "6 + 1" (6 days at $1/night, +1 optional
