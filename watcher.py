@@ -43,7 +43,7 @@ DELIVER_AFTER_DATE = date(2026, 8, 2)
 MIN_DAYS = 6
 
 # Where to send the alert email
-TO_EMAIL = "swachsler@outlook.com"
+TO_EMAIL = os.environ.get("TO_EMAIL")
 
 # The page we're watching
 URL = "https://www.imoova.com/relocations/table/usa"
